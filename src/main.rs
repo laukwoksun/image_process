@@ -1,15 +1,50 @@
+use eframe::egui;
 use std::path::Path;
 use walkdir::WalkDir;
 use image::{GenericImageView, ImageBuffer, Rgba};
 
 fn main() {
-    // 直接声明为 String 类型
-    let mut folder_path = r"E:\klzz\courses\L8_v1_d_01\Game1_LT1\laya\assets\game_zk\image".to_string(); 
-    folder_path = folder_path.replace("\\", "/");
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size((320.0, 240.0)),
+        ..Default::default()
+    };
+    let result = eframe::run_native(
+        "图片切割工具",
+        options,
+        Box::new(|_cc| Box::new(ImageCutterApp::default())),
+    );
+    match result {
+        Ok(_) => println!("应用程序正常退出"),
+        Err(e) => eprintln!("应用程序启动失败: {}", e),
+    }
+}
 
-    let (total_png_count, processed_png_count) = process_folder(&folder_path);
-    println!("全部的 PNG 格式文件数量: {}", total_png_count);
-    println!("最终需要处理的 PNG 文件数量: {}", processed_png_count);
+#[derive(Default)]
+struct ImageCutterApp {
+    folder_path: String,
+    message: String,
+}
+
+impl eframe::App for ImageCutterApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("请输入文件夹路径：");
+            ui.text_edit_singleline(&mut self.folder_path);
+
+            if ui.button("确定").clicked() {
+                let folder_path = self.folder_path.replace("\\", "/");
+                let (total_png_count, processed_png_count) = process_folder(&folder_path);
+                self.message = format!(
+                    "全部的 PNG 格式文件数量: {}\n最终需要处理的 PNG 文件数量: {}",
+                    total_png_count, processed_png_count
+                );
+            }
+
+            if!self.message.is_empty() {
+                ui.label(&self.message);
+            }
+        });
+    }
 }
 
 fn process_folder(folder_path: &str) -> (usize, usize) {
