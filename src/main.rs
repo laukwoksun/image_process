@@ -1,7 +1,9 @@
 use eframe::egui;
 use std::path::Path;
+use std::fs;
+use std::env;
 use walkdir::WalkDir;
-use image::{GenericImageView, ImageBuffer, Rgba};
+use image::{DynamicImage,GenericImageView, ImageBuffer, Rgba};
 
 fn main() {
     let options = eframe::NativeOptions {
@@ -11,7 +13,28 @@ fn main() {
     let result = eframe::run_native(
         "图片切割工具",
         options,
-        Box::new(|_cc| Box::new(ImageCutterApp::default())),
+        Box::new(|cc| {
+            // 获取系统字体路径
+            let system_root = env::var("SystemRoot").expect("无法获取系统根目录");
+            let font_path = format!("{}\\Fonts\\msyh.ttc", system_root); // 字体文件路径
+
+            // 加载字体文件
+            let font_data = fs::read(font_path).expect("无法加载字体文件");
+
+            let mut fonts = egui::FontDefinitions::default();
+            fonts.font_data.insert(
+                "Microsoft YaHei".to_owned(),          // 字体名称
+                egui::FontData::from_owned(font_data), // 加载字体数据
+            );
+            fonts
+                .families
+                .get_mut(&egui::FontFamily::Proportional)
+                .unwrap()
+                .insert(0, "Microsoft YaHei".to_owned()); // 使用系统字体
+            cc.egui_ctx.set_fonts(fonts.clone()); // 使用 clone 避免移动所有权
+
+            Box::new(ImageCutterApp::default())
+        }),
     );
     match result {
         Ok(_) => println!("应用程序正常退出"),
@@ -85,15 +108,29 @@ fn process_png(path: &Path) -> bool {
     false
 }
 
-fn split_image(img: image::DynamicImage) -> Vec<ImageBuffer<Rgba<u8>, Vec<u8>>> {
+fn split_image(img: DynamicImage) -> Vec<ImageBuffer<Rgba<u8>, Vec<u8>>> {
     let (width, height) = img.dimensions();
+
+    // 计算水平和垂直方向需要切割的份数
+    let horizontal_splits = (width as f32 / 512.0).ceil() as u32;
+    let vertical_splits = (height as f32 / 512.0).ceil() as u32;
+
+    // 计算每份的宽度和高度
+    let chunk_width = (width as f32 / horizontal_splits as f32).ceil() as u32;
+    let chunk_height = (height as f32 / vertical_splits as f32).ceil() as u32;
+
     let mut chunks = Vec::new();
 
-    for y in (0..height).step_by(512) {
-        for x in (0..width).step_by(512) {
-            let chunk_width = std::cmp::min(512, width - x);
-            let chunk_height = std::cmp::min(512, height - y);
-            let chunk = img.crop_imm(x, y, chunk_width, chunk_height);
+    for y in 0..vertical_splits {
+        for x in 0..horizontal_splits {
+            let start_x = x * chunk_width;
+            let start_y = y * chunk_height;
+
+            // 确保最后一块不会超出图片边界
+            let end_x = std::cmp::min(start_x + chunk_width, width);
+            let end_y = std::cmp::min(start_y + chunk_height, height);
+
+            let chunk = img.crop_imm(start_x, start_y, end_x - start_x, end_y - start_y);
             chunks.push(chunk.to_rgba8());
         }
     }
